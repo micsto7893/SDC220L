@@ -1,0 +1,432 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+
+namespace SDC220L
+{
+    // SDC 220L Final Project - Multi-Function Calculator
+    // Student: Michael Stoller
+    // Combines arithmetic, memory, multi-number calculations, and exception handling.
+    internal class Program
+    {
+        static void Main(string[] args)
+        {
+            MemoryManager memory = new MemoryManager();
+            CalculatorUI.DisplayHeader();
+            CalculatorUI.DisplayWelcome();
+
+            bool running = true;
+            while (running)
+            {
+                CalculatorUI.DisplayMenu();
+                int selection = CalculatorUI.ReadChoice("Select an option (1-8): ", 1, 8);
+
+                switch (selection)
+                {
+                    case 1:
+                    case 2:
+                    case 3:
+                    case 4:
+                        PerformSelectedOperation(selection);
+                        break;
+                    case 5:
+                        HandleSingleMemory(memory);
+                        break;
+                    case 6:
+                        HandleIntegerCollection(memory);
+                        break;
+                    case 7:
+                        PerformMultiNumberCalculation();
+                        break;
+                    case 8:
+                        running = false;
+                        break;
+                }
+            }
+
+            CalculatorUI.DisplayGoodbye();
+        }
+
+        // Gets two numeric values and performs the operation selected on the menu.
+        static void PerformSelectedOperation(int selection)
+        {
+            string operation = selection switch
+            {
+                1 => "ADDITION", 2 => "SUBTRACTION", 3 => "MULTIPLICATION",
+                4 => "DIVISION", _ => "UNKNOWN"
+            };
+
+            Console.WriteLine($"\n--- {operation} ---");
+            // Week 4: ReadNumberWithExceptions uses double.Parse and catches bad input.
+            double first = CalculatorUI.ReadNumberWithExceptions("Enter first number: ");
+
+            // The second number can be retried after a division-by-zero exception.
+            while (true)
+            {
+                double second = CalculatorUI.ReadNumberWithExceptions("Enter second number: ");
+
+                try
+                {
+                    double result = Calculator.Calculate(first, second, selection);
+                    string symbol = selection switch
+                    {
+                        1 => "+", 2 => "-", 3 => "*", 4 => "/", _ => "?"
+                    };
+
+                    if (double.IsInfinity(result) || double.IsNaN(result))
+                        throw new OverflowException("Calculation result is outside the supported range.");
+                    Console.WriteLine($"\n{CalculatorUI.FormatNumber(first)} {symbol} " +
+                        $"{CalculatorUI.FormatNumber(second)} = {CalculatorUI.FormatNumber(result)}\n");
+                    break;
+                }
+                catch (DivideByZeroException)
+                {
+                    Console.WriteLine("Error: Cannot divide by zero. Please enter a different second number.");
+                }
+                catch (OverflowException)
+                {
+                    Console.WriteLine("Error: Calculation exceeded the supported range. Returning to menu.\n");
+                    return;
+                }
+            }
+        }
+
+        // Applies one selected operation to two through ten numbers, in entry order.
+        static void PerformMultiNumberCalculation()
+        {
+            Console.WriteLine("\n--- MULTI-NUMBER CALCULATION ---");
+            Console.WriteLine("1. Addition");
+            Console.WriteLine("2. Subtraction");
+            Console.WriteLine("3. Multiplication");
+            Console.WriteLine("4. Division");
+            int operation = CalculatorUI.ReadChoice("Choose an operation (1-4): ", 1, 4);
+            int count = CalculatorUI.ReadChoice("How many values (2-10)? ", 2, 10);
+            double result = CalculatorUI.ReadNumberWithExceptions("Enter number 1: ");
+            string symbol = operation switch
+            {
+                1 => "+", 2 => "-", 3 => "*", 4 => "/", _ => "?"
+            };
+            string equation = CalculatorUI.FormatNumber(result);
+
+            for (int i = 2; i <= count; i++)
+            {
+                // A zero divisor triggers the same exception as standard division.
+                while (true)
+                {
+                    double next = CalculatorUI.ReadNumberWithExceptions($"Enter number {i}: ");
+                    try
+                    {
+                        result = Calculator.Calculate(result, next, operation);
+                        if (double.IsInfinity(result) || double.IsNaN(result))
+                            throw new OverflowException("Calculation result is outside the supported range.");
+                        equation += $" {symbol} {CalculatorUI.FormatNumber(next)}";
+                        break;
+                    }
+                    catch (DivideByZeroException)
+                    {
+                        Console.WriteLine("Error: Cannot divide by zero. Enter a different number.");
+                    }
+                    catch (OverflowException)
+                    {
+                        Console.WriteLine("Error: Calculation exceeded the supported range. Returning to menu.\n");
+                        return;
+                    }
+                }
+            }
+            // The equation is evaluated left-to-right for subtraction and division.
+            Console.WriteLine($"\n{equation} = {CalculatorUI.FormatNumber(result)}\n"); 
+        }
+
+        // Shows the single-value memory menu until the user returns to the main menu.
+        static void HandleSingleMemory(MemoryManager memory)
+        {
+            bool inMenu = true;
+            while (inMenu)
+            {
+                Console.WriteLine("\n--- SINGLE-VALUE MEMORY ---");
+                Console.WriteLine("1. Store / replace a value");
+                Console.WriteLine("2. Retrieve stored value");
+                Console.WriteLine("3. Clear stored value");
+                Console.WriteLine("4. Return to main menu");
+                int choice = CalculatorUI.ReadChoice("Select an option (1-4): ", 1, 4);
+
+                switch (choice)
+                {
+                    case 1:
+                        double value = CalculatorUI.ReadNumber("Enter a number to store: ");
+                        bool replacing = memory.HasStoredValue;
+                        memory.StoreValue(value);
+                        Console.WriteLine(replacing ? "Stored value replaced.\n" : "Value stored.\n");
+                        break;
+                    case 2:
+                        if (memory.TryGetValue(out double stored))
+                            Console.WriteLine($"Stored value: {CalculatorUI.FormatNumber(stored)}\n");
+                        else
+                            Console.WriteLine("Memory is empty.\n");
+                        break;
+                    case 3:
+                        memory.ClearValue();
+                        Console.WriteLine("Stored value cleared.\n");
+                        break;
+                    case 4:
+                        inMenu = false;
+                        break;
+                }
+            }
+        }
+
+        // Allows the user to manage up to ten integer values.
+        static void HandleIntegerCollection(MemoryManager memory)
+        {
+            bool inMenu = true;
+            while (inMenu)
+            {
+                Console.WriteLine("\n--- INTEGER COLLECTION MEMORY ---");
+                Console.WriteLine("1. Add integer(s)");
+                Console.WriteLine("2. Display all values");
+                Console.WriteLine("3. Display count");
+                Console.WriteLine("4. Remove a value by position");
+                Console.WriteLine("5. Sum of values");
+                Console.WriteLine("6. Average of values");
+                Console.WriteLine("7. Difference (first minus last)");
+                Console.WriteLine("8. Return to main menu");
+                int choice = CalculatorUI.ReadChoice("Select an option (1-8): ", 1, 8);
+
+                switch (choice)
+                {
+                    case 1:
+                        int available = MemoryManager.MaxValues - memory.Count;
+                        if (available == 0)
+                        {
+                            Console.WriteLine("Collection is full (10 values). Remove one before adding more.\n");
+                            break;
+                        }
+                        int howMany = CalculatorUI.ReadChoice(
+                            $"How many integers would you like to add (1-{available})? ", 1, available);
+                        for (int i = 1; i <= howMany; i++)
+                        {
+                            int number = CalculatorUI.ReadInteger($"Enter integer {i}: ");
+                            memory.AddInteger(number);
+                        }
+                        Console.WriteLine($"Added {howMany} value(s). Count: {memory.Count}/10.\n");
+                        break;
+                    case 2:
+                        if (memory.Count == 0)
+                            Console.WriteLine("Collection is empty.\n");
+                        else
+                        {
+                            Console.WriteLine("Stored values (position: value):");
+                            for (int i = 0; i < memory.Count; i++)
+                                Console.WriteLine($"{i + 1}: {memory.Values[i]}");
+                            Console.WriteLine();
+                        }
+                        break;
+                    case 3:
+                        Console.WriteLine($"Values stored: {memory.Count}/10\n");
+                        break;
+                    case 4:
+                        if (memory.Count == 0)
+                        {
+                            Console.WriteLine("Collection is empty; nothing to remove.\n");
+                            break;
+                        }
+                        Console.WriteLine("Enter the position shown by 'Display all values'.");
+                        int position = CalculatorUI.ReadChoice(
+                            $"Position to remove (1-{memory.Count}): ", 1, memory.Count);
+                        int removed = memory.RemoveAt(position - 1);
+                        Console.WriteLine($"Removed value {removed} from position {position}.\n");
+                        break;
+                    case 5:
+                        Console.WriteLine($"Sum: {memory.Sum()}\n");
+                        break;
+                    case 6:
+                        if (memory.Count == 0)
+                            Console.WriteLine("Cannot calculate an average: collection is empty.\n");
+                        else
+                            Console.WriteLine($"Average: {CalculatorUI.FormatNumber(memory.Average())}\n");
+                        break;
+                    case 7:
+                        if (memory.Count == 0)
+                            Console.WriteLine("Cannot calculate a difference: collection is empty.\n");
+                        else
+                            Console.WriteLine($"First - last: {memory.Values[0]} - " +
+                                $"{memory.Values[memory.Count - 1]} = {memory.FirstMinusLast()}\n");
+                        break;
+                    case 8:
+                        inMenu = false;
+                        break;
+                }
+            }
+        }
+    }
+
+    // Keeps the arithmetic logic separate from the console interface.
+    internal static class Calculator
+    {
+        public static double Calculate(double first, double second, int selection)
+        {
+            return selection switch
+            {
+                1 => first + second,
+                2 => first - second,
+                3 => first * second,
+                4 => Divide(first, second),
+                _ => throw new ArgumentOutOfRangeException(nameof(selection))
+            };
+        }
+
+        // Unlike double division, this intentionally throws an exception for a zero divisor.
+        public static double Divide(double first, double second)
+        {
+            if (second == 0)
+                throw new DivideByZeroException("The second number cannot be zero.");
+            return first / second;
+        }
+    }
+
+    // Stores one optional decimal value and a separate list of up to ten integers.
+    internal class MemoryManager
+    {
+        public const int MaxValues = 10;
+        private double? storedValue;
+        private readonly List<int> integers = new List<int>();
+
+        public bool HasStoredValue => storedValue.HasValue;
+        public int Count => integers.Count;
+        public IReadOnlyList<int> Values => integers.AsReadOnly();
+
+        public void StoreValue(double value) => storedValue = value;
+        public bool TryGetValue(out double value)
+        {
+            value = storedValue.GetValueOrDefault();
+            return storedValue.HasValue;
+        }
+        public void ClearValue() => storedValue = null;
+
+        public bool AddInteger(int value)
+        {
+            if (integers.Count >= MaxValues) return false;
+            integers.Add(value);
+            return true;
+        }
+        public int RemoveAt(int index)
+        {
+            int value = integers[index];
+            integers.RemoveAt(index);
+            return value;
+        }
+        public long Sum()
+        {
+            long total = 0;
+            foreach (int value in integers) total += value;
+            return total;
+        }
+        public double Average() => (double)Sum() / integers.Count;
+        public long FirstMinusLast() => (long)integers[0] - integers[integers.Count - 1];
+    }
+
+    // Handles console output, menu selection, validation, and number formatting.
+    internal static class CalculatorUI
+    {
+        public static void DisplayHeader()
+        {
+            Console.WriteLine("========================================");
+            Console.WriteLine("        SDC 220L FINAL PROJECT");
+            Console.WriteLine("       MULTI-FUNCTION CALCULATOR");
+            Console.WriteLine("           Michael Stoller");
+            Console.WriteLine("========================================\n");
+        }
+
+        public static void DisplayWelcome()
+        {
+            Console.WriteLine("Welcome to the Multi-Function Calculator!");
+            Console.WriteLine("Choose a math operation or a memory function.");
+            Console.WriteLine("Single memory stores one number; collection memory stores up to 10 integers.");
+            Console.WriteLine("Invalid numbers and division by zero can be corrected without restarting.");
+            Console.WriteLine("Multi-number calculations accept 2 to 10 values, evaluated left to right.");
+            Console.WriteLine("Use the numbered menus to work with your values, then choose Exit.\n");
+        }
+
+        public static void DisplayMenu()
+        {
+            Console.WriteLine("--- MAIN MENU ---");
+            Console.WriteLine("1. Addition");
+            Console.WriteLine("2. Subtraction");
+            Console.WriteLine("3. Multiplication");
+            Console.WriteLine("4. Division");
+            Console.WriteLine("5. Single-value memory");
+            Console.WriteLine("6. Integer collection memory");
+            Console.WriteLine("7. Multi-number calculation");
+            Console.WriteLine("8. Exit");
+        }
+
+        public static int ReadChoice(string prompt, int minimum, int maximum)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                if (int.TryParse(Console.ReadLine(), out int choice) &&
+                    choice >= minimum && choice <= maximum)
+                    return choice;
+                Console.WriteLine($"Error: Please enter a whole number from {minimum} to {maximum}.");
+            }
+        }
+
+        public static int ReadInteger(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                if (int.TryParse(Console.ReadLine(), out int value)) return value;
+                Console.WriteLine("Error: Please enter a valid integer.");
+            }
+        }
+
+        public static double ReadNumber(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                if (double.TryParse(Console.ReadLine(), out double number) &&
+                    !double.IsNaN(number) && !double.IsInfinity(number)) return number;
+                Console.WriteLine("Error: Please enter a valid number.");
+            }
+        }
+
+        // Week 4: Parse numeric input and handle the exceptions when it is invalid.
+        public static double ReadNumberWithExceptions(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine() ?? string.Empty;
+                try
+                {
+                    double value = double.Parse(input, CultureInfo.CurrentCulture);
+                    if (double.IsNaN(value) || double.IsInfinity(value))
+                        throw new OverflowException("The value must be finite.");
+                    return value;
+                }
+                catch (FormatException)
+                {
+                    Console.WriteLine("Error: That is not a number. Please try again.");
+                }
+                catch (OverflowException)
+                {
+                    Console.WriteLine("Error: That number is outside the supported range. Please try again.");
+                }
+            }
+        }
+
+        public static string FormatNumber(double value) =>
+            value.ToString("0.##", CultureInfo.CurrentCulture);
+
+        public static void DisplayGoodbye()
+        {
+            Console.WriteLine("\n========================================");
+            Console.WriteLine("Thank you for using the Calculator!");
+            Console.WriteLine("                Goodbye!");
+            Console.WriteLine("========================================");
+        }
+    }
+}
